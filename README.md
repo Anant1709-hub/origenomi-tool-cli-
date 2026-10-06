@@ -8,6 +8,20 @@ Command-line tool that:
 - Rotates so the **earlier** of dnaA/oriC starts the sequence (or the single site if only one found).
 - Writes exactly two outputs: `origenomi_<prefix>.fna` and `origenomi_<prefix>_report.txt`.
 
+## Requirements
+
+- Python >= 3.9
+- NCBI BLAST+
+
+### Install NCBI BLAST+
+
+On Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install ncbi-blast+
+```
+
 ## Install
 ```bash
 pip install -e .
