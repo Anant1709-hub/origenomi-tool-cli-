@@ -1,6 +1,6 @@
 import argparse
 import os
-from origami.workflows import run_full, run_trim_only, run_oric_only
+from origami.workflows import run_full
 from origami.logging_setup import setup_logging
 from importlib.resources import files
 
@@ -33,14 +33,6 @@ def main():
     p_run = subparsers.add_parser("run", help="Trim + dnaA/oriC + rotate + report")
     add_common(p_run)
 
-    # Trim-only
-    p_trim = subparsers.add_parser("trim", help="Trim duplicated terminal overlaps only")
-    add_common(p_trim)
-
-    # OriC-only
-    p_oric = subparsers.add_parser("oric", help="dnaA/oriC + rotate on original input")
-    add_common(p_oric)
-
     args = parser.parse_args()
 
     # Inject default DB paths automatically
@@ -53,9 +45,5 @@ def main():
 
     if args.command == "run":
         run_full(args, logger)
-    elif args.command == "trim":
-        run_trim_only(args, logger)
-    elif args.command == "oric":
-        run_oric_only(args, logger)
     else:
         parser.print_help()
