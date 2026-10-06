@@ -24,7 +24,7 @@ sudo apt install ncbi-blast+
 
 ## Install
 ```bash
-pip install -e .
+pip install origenomi
 ```
 
 ## Usage
