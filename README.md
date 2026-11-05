@@ -31,7 +31,7 @@ pip install origenomi
 
 ### Full pipeline
 ```bash
-origenomi run -i <input.fna> -o <output_prefix> [--keep-temp]  [--keep-temp]
+origenomi run -i <input.fna> -o <output_prefix> [--keep-temp]
 ```
 
 
