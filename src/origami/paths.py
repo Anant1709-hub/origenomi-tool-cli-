@@ -27,6 +27,7 @@ class Paths:
         self.blast_dnaa_orig = os.path.join(self.annotation_dir, f"{self.prefix}_dnaa_original.blast")
         self.blast_oric_orig = os.path.join(self.annotation_dir, f"{self.prefix}_oric_original.blast")
 
+        self.blast_oriv_ext = os.path.join(self.annotation_dir, f"{self.prefix}_oriv_extended.blast")
 
 def resolve_paths(input_file: str, out_dir: str) -> Paths:
     """

@@ -5,14 +5,11 @@ def prepare_chromosome_sequence(header: str, sequence: str, duplicate_bp: int = 
     - Skips plasmids
     - Adds the first `duplicate_bp` bases at the end to handle circular overlap
     """
-    # checking for plasmid in the header
-    if "plasmid" in header.lower():
-        return sequence  # skip plasmids
 
     # Make sure we don't exceed sequence length
     bp_to_duplicate = min(len(sequence), duplicate_bp)
     extended_seq = sequence + sequence[:bp_to_duplicate]
-    return extended_seq
+    return extended_seq,bp_to_duplicate
 
 
 def trim_extended_if_needed(seq: str, hit: dict, extension_len: int = 4000):

@@ -134,9 +134,7 @@ def pair_and_choose(header: str, seq: str,
         o_start, o_end = sorted((o["qstart"], o["qend"]))
         return d_start <= o_end and o_start <= d_end
 
-    # ---------------------------
     # Tiered pairing logic
-    # ---------------------------
     tier_limits = [
         (0.01 * genome_len, True),    # Tier 1: <= 1%, penalize distance
         (0.05 * genome_len, True),    # Tier 2: <= 5%, penalize distance
@@ -226,3 +224,59 @@ def pair_and_choose(header: str, seq: str,
     # Adjust for extension
     seq_adjusted, chosen = adjust_for_extension(seq, chosen, extension_len)
     return pairs, chosen, seq_adjusted
+
+def adjust_for_oriv_extension(seq: str, extension_per_seq: dict,header: str, hit: list):
+    """
+    Remove either the start or end extension while preserving the full hit.
+    """
+    if not hit:
+        return {
+            "sequence": seq,
+        }
+
+    extension_len = extension_per_seq[header]
+    genome_len = len(seq) - extension_len
+
+    qstart = hit[0]["qstart"]
+    qend = hit[0]["qend"]
+    oriv_id = hit[0]["sseqid"]
+
+    overlaps_end_extension = qend > genome_len
+
+    if not overlaps_end_extension:
+        new_seq = seq[:genome_len]
+        adjusted_start = qstart
+        adjusted_end = qend
+        removed_extension = "end"
+    else:
+        new_seq = seq[extension_len:]
+        adjusted_start = qstart - extension_len
+        adjusted_end = qend - extension_len
+        removed_extension = "start"
+
+    oriv_wrap = None
+    if qstart > genome_len:
+            oriv_wrap = {
+                "is_wrapped": True,
+                "qstart": qstart,
+                "remaining": qend,
+                "genome_len": genome_len
+            }
+
+    return {
+        "sequence": new_seq,
+        "sseqid": oriv_id,
+        "original_coordinates": {
+            "start": qstart,
+            "end": qend
+        },
+        "adjusted_coordinates": {
+            "start": adjusted_start,
+            "end": adjusted_end
+        },
+        "removed_extension": removed_extension,
+        "original_genome_length": genome_len,
+        "new_genome_length": len(new_seq),
+        "wrap_info": oriv_wrap
+    }
+

@@ -37,7 +37,7 @@ class GlobalProgress:
     Weighted phases (defaults): Trim 40%, dnaA 20%, oriC 20%, Rotate 20%.
     Trimming and rotate scale with #records; BLAST phases flip when done.
     """
-    def __init__(self, n_records: int, weights=(0.40, 0.20, 0.20, 0.20), label="origami"):
+    def __init__(self, n_records: int, weights=(0.40, 0.20, 0.20, 0.20), label="origenomi"):
         self.n = max(1, n_records)
         self.w_trim, self.w_dnaa, self.w_oric, self.w_rotate = weights
         self.trim_i = 0

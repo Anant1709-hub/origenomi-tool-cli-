@@ -4,9 +4,6 @@ from origami.workflows import run_full, run_trim_only, run_oric_only
 from origami.logging_setup import setup_logging
 from importlib.resources import files
 
-# Default DB paths (relative to project root)
-DNAA_PREFIX = "dnaA_clustered100_DB"
-ORIC_PREFIX = "OriC_clustered100_DB"
 
 def get_db_prefixes():
     db_root = files("origami.data.clustered_DB")
@@ -14,6 +11,10 @@ def get_db_prefixes():
     oric_prefix = db_root / "OriC_clustered100_DB"
     return str(dnaA_prefix), str(oric_prefix)
 
+def get_oriv_db_prefixes():
+    db_root = files("origami.data.clustered_oriv_db")
+    oriv_prefix = db_root / "OriV_clustered100_DB"
+    return str(oriv_prefix)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -45,6 +46,7 @@ def main():
 
     # Inject default DB paths automatically
     args.dnaA_db, args.oric_db = get_db_prefixes()
+    args.oriv_db = get_oriv_db_prefixes()
 
     args.out_dir = os.path.abspath(args.out_dir)
     os.makedirs(args.out_dir, exist_ok=True)

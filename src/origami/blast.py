@@ -38,10 +38,73 @@ def parse_blast_annotation(path: str):
     Parse annotation outfmt into dict[qseqid] -> list[hit dicts].
     """
     hits = {}
+    num_of_hits = {}
     with open(path) as f:
-        for line in f:
+        lines = iter(f)
+
+        for line in lines:
             if not line.strip() or line.startswith("#"):
+                if line.startswith("# Query:"):
+                    NZ_id = line.split()[2]
+                    num = None
+
+                    for next_line in lines:
+                        if "hits" in next_line:
+                            num = int(next_line.split()[1])
+                            break
+                    
+                    num_of_hits[NZ_id] = num
                 continue
+            
+            (qid, sid, qstart, qend, sstart, send,
+             qlen, slen, pident, evalue, bitscore,
+             mismatch, gaps, length) = line.strip().split()
+
+            qstart, qend = int(qstart), int(qend)
+            sstart, send = int(sstart), int(send)
+
+            entry = {
+                "sseqid": sid,
+                "qstart": min(qstart, qend),
+                "qend":   max(qstart, qend),
+                "sstart": min(sstart, send),
+                "send":   max(sstart, send),
+                "qlen": int(qlen),
+                "slen": int(slen),
+                "length": int(length),
+                "pident": float(pident),
+                "evalue": float(evalue),
+                "bitscore": float(bitscore),
+                "mismatch": int(mismatch),
+                "gaps": int(gaps),
+            }
+            hits.setdefault(qid, []).append(entry)
+    return hits,num_of_hits
+
+def parse_oriv_blast_annotation(path: str,oric_hits: list):
+    """
+    Parse annotation outfmt into dict[qseqid] -> list[hit dicts].
+    """
+    replicon_to_be_processed = []
+    for key,value in oric_hits.items():
+        if value == 0:
+           replicon_to_be_processed.append(key) 
+
+    hits = {}
+    with open(path) as f:
+        lines = iter(f)
+        
+        for line in lines:
+            if not line.strip() or line.startswith("#"):
+                if line.startswith("# Query:"):
+                    NZ_id = line.split()[2]
+                    if NZ_id not in replicon_to_be_processed:
+                        for next_line in lines:
+                            if "Query" in next_line:
+                                break
+
+                continue
+            
             (qid, sid, qstart, qend, sstart, send,
              qlen, slen, pident, evalue, bitscore,
              mismatch, gaps, length) = line.strip().split()
