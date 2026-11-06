@@ -1,5 +1,5 @@
 matplotlib
-Bio
+biopython
 numpy
 fastapi
 uvicorn
