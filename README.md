@@ -15,10 +15,11 @@ Command-line tool that:
 
 ### Install NCBI BLAST+
 
+Install NCBI BLAST+ using your Linux distribution's package manager.
+
 On Ubuntu/Debian:
 
 ```bash
-sudo apt update
 sudo apt install ncbi-blast+
 ```
 
