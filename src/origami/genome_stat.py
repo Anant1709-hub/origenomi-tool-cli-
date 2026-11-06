@@ -21,7 +21,7 @@ def compute_genome_stats(fasta_path: str):
             plasmid_count += 1
 
     gc_percent = round((gc_count / total_bases * 100), 2) if total_bases > 0 else 0
-
+    print(genome_size)
     return {
         "genome_size_bp": genome_size,
         "contig_count": contig_count,

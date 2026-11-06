@@ -6,4 +6,4 @@ def setup_logging(verbose: bool = False):
         level=level,
         format="%(asctime)s [%(levelname)s] %(message)s"
     )
-    return logging.getLogger("origami")
+    return logging.getLogger("origenomi")

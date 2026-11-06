@@ -5,20 +5,20 @@ from origami.circularize import prepare_chromosome_sequence, trim_extended_if_ne
 from origami.paths import resolve_paths
 from origami.io import stream_fasta, append_fasta_record
 from origami.trim import detect_terminal_overlap
-from origami.blast import run_blast_annotation, parse_blast_annotation
+from origami.blast import run_blast_annotation, parse_blast_annotation,parse_oriv_blast_annotation
 from origami.hits import select_top_hits
-from origami.pairing import pair_and_choose
+from origami.pairing import pair_and_choose,adjust_for_oriv_extension
 from origami.rotate import rotate_sequence
 from origami.report import (
     write_section_header,
     write_trim_record_block,
-    write_oric_record_block,
+    write_intermediate_record_block,
     write_extended_record_block,
     write_original_record_block,   
 )
 from origami.utils import GlobalProgress
 import glob
-
+from origami.genome_stat import compute_genome_stats
 
 # Helper functions
 def _finalize(paths, keep_temp: bool, logger):
@@ -176,16 +176,19 @@ def run_full(args, logger=None):
     write_section_header(paths.report, "Trim Analysis")
 
     n = _count_records(args.input)
-    gp = GlobalProgress(n, weights=(0.40, 0.20, 0.20, 0.20), label="origami")
+    gp = GlobalProgress(n, weights=(0.40, 0.20, 0.20, 0.20), label="origenomi")
     gp.start()
 
     # Trim + Extend
     adjusted_records = []
+    extension_added_to_a_seq = {}
+
     for header, seq in stream_fasta(args.input):
         trimmed_seq, trim_msg = detect_terminal_overlap(header, seq, paths, logger=logger)
         append_fasta_record(paths.original_fasta, header, trimmed_seq)
 
-        extended_seq = prepare_chromosome_sequence(header, trimmed_seq)
+        extended_seq,num_of_seq = prepare_chromosome_sequence(header, trimmed_seq)
+        extension_added_to_a_seq[header] = num_of_seq
         append_fasta_record(paths.final_fasta, header, extended_seq)
 
         write_trim_record_block(paths.report, header, trim_msg)
@@ -195,31 +198,84 @@ def run_full(args, logger=None):
     run_blast_annotation(paths.final_fasta, args.dnaA_db, paths.blast_dnaa_ext, evalue="1e-5", quiet=True)
     run_blast_annotation(paths.final_fasta, args.oric_db, paths.blast_oric_ext, evalue="1e-5", quiet=True)
 
-    dnaA_hits_ext = parse_blast_annotation(paths.blast_dnaa_ext)
-    oriC_hits_ext = parse_blast_annotation(paths.blast_oric_ext)
+    dnaA_hits_ext,num_dnaa_hits = parse_blast_annotation(paths.blast_dnaa_ext)
+    oriC_hits_ext,num_oric_hits = parse_blast_annotation(paths.blast_oric_ext)
+
+    run_oriv = False
+    for value in num_oric_hits.values():
+        if value == 0:
+            run_oriv = True
+            break
+
+    oriv_hits_ext = None
+    if run_oriv:
+        run_blast_annotation(paths.final_fasta, args.oriv_db, paths.blast_oriv_ext, evalue="1e-5", quiet=True)
+        oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext,num_oric_hits)
 
     # Extended + Original reports (from extended hits)
     for header, seq in stream_fasta(paths.final_fasta):
         rid = _record_id(header)
+
         top_dnaa_ext = select_top_hits(dnaA_hits_ext.get(rid, []), k=3)
         top_oric_ext = select_top_hits(oriC_hits_ext.get(rid, []), k=7)
 
+        selected_oriv_hit = select_top_hits(oriv_hits_ext.get(rid, []), k=1)
+        
         # Pairing using extended sequence
         pairs, chosen, seq_adjusted = pair_and_choose(rid, seq, top_dnaa_ext, top_oric_ext)
+        # print("###########################################")
+        # print("ORIC")
+        # print(pairs)
+        # print(chosen)
+        # print("###########################################")
 
-        adjusted_records.append((header, seq_adjusted, pairs, chosen))
+        info_after_adj = adjust_for_oriv_extension(seq,extension_added_to_a_seq,header,selected_oriv_hit)
+        # print("###########################################")
+        # print("ORIV")
+        # info_after_adj["sequence"] = info_after_adj["sequence"][:6]
+        # print(info_after_adj)
+        # print("###########################################")
+
+        found = None
+        if len(pairs) != 0:
+            found = "ORIC"
+            adjusted_records.append((header, seq_adjusted, pairs, chosen,found))
+        elif info_after_adj.get("original_coordinates",None) != None:
+            found = "ORIV"
+            adjusted_records.append((header, info_after_adj["sequence"], None, info_after_adj,found))
+        else:
+            found = "Nothing"
+            adjusted_records.append((header,seq[:-extension_added_to_a_seq[header]] , None, None,found))
 
         # Build chosen oriC dict
-        chosen_oric_dict = None
-        if chosen.get("oriC_id") and chosen.get("oriC_coords"):
-            qstart, qend = chosen["oriC_coords"]
-            wrap_info = chosen.get("wrap_info")
-            chosen_oric_dict = {
-                "sseqid": chosen["oriC_id"],
+        chosen_oric_oriv_dict = None
+        if found == "ORIC":
+            if chosen.get("oriC_id") and chosen.get("oriC_coords"):
+                qstart, qend = chosen["oriC_coords"]
+                wrap_info = chosen.get("wrap_info")
+                chosen_oric_oriv_dict = {
+                    "oric_or_oriv": found,
+                    "sseqid": chosen["oriC_id"],
+                    "qstart": qstart,
+                    "qend": qend,
+                    "wrap_info": wrap_info 
+                }
+        elif found == "ORIV":
+            qstart = info_after_adj["original_coordinates"]["start"]
+            qend = info_after_adj["original_coordinates"]["end"]
+            wrap_info = info_after_adj["wrap_info"]
+            chosen_oric_oriv_dict = {
+                "oric_or_oriv": found,
+                "sseqid": info_after_adj["sseqid"],
                 "qstart": qstart,
                 "qend": qend,
-                "wrap_info": wrap_info
+                "wrap_info": wrap_info 
             }
+        else:
+            chosen_oric_oriv_dict = {
+                "oric_or_oriv": found,
+            }
+
 
         # Build chosen dnaA dict
         chosen_dnaa_dict = None
@@ -238,79 +294,94 @@ def run_full(args, logger=None):
         # Write extended report
         write_extended_record_block(paths.extended_report, header,
                                     chosen_dnaa=chosen_dnaa_dict,
-                                    chosen_oric=chosen_oric_dict)
+                                    chosen_oric=chosen_oric_oriv_dict,
+                                    )
 
         # Write original report (coordinates mapped back using wrap_info)
         genome_len = len(seq) - 4000  # original genome length
         write_original_record_block(paths.original_report, header,
                                     chosen_dnaa=chosen_dnaa_dict,
-                                    chosen_oric=chosen_oric_dict,
+                                    chosen_oric=chosen_oric_oriv_dict,
                                     genome_len=genome_len)
 
     #  Overwrite final FASTA with adjusted sequences
     if os.path.exists(paths.final_fasta):
         os.remove(paths.final_fasta)
-    for header, seq_adjusted, _, _ in adjusted_records:
+        
+    for header, seq_adjusted, _, _, _ in adjusted_records:
         append_fasta_record(paths.final_fasta, header, seq_adjusted)
 
     # Rotation + final OriC report
     write_section_header(paths.report, "OriC Analysis", append=True)
     rotated_records = []
 
-    for header, seq_adjusted, pairs, chosen in adjusted_records:
-        rid = _record_id(header)
-        top_dnaa = select_top_hits(dnaA_hits_ext.get(rid, []), k=3)
-        top_oric = select_top_hits(oriC_hits_ext.get(rid, []), k=7)
+    for header, seq_adjusted, pairs, chosen, found in adjusted_records:
+        if found == "ORIC":
+            rid = _record_id(header)
+            top_dnaa = select_top_hits(dnaA_hits_ext.get(rid, []), k=3)
+            top_oric = select_top_hits(oriC_hits_ext.get(rid, []), k=7)
 
-        # Always use adjusted coords (they're identical to originals in normal cases)
-        dnaa_coords = chosen.get("dnaA_coords_adj")
-        oric_coords = chosen.get("oriC_coords_adj")
+            # Always use adjusted coords (they're identical to originals in normal cases)
+            dnaa_coords = chosen.get("dnaA_coords_adj")
+            oric_coords = chosen.get("oriC_coords_adj")
 
-        if not dnaa_coords and not oric_coords:
-            # print(f"[WARN] No dnaA or oriC found for {header}, skipping rotation.")
-            continue
+            if not dnaa_coords and not oric_coords:
+                # print(f"[WARN] No dnaA or oriC found for {header}, skipping rotation.")
+                continue
 
-        dnaa_start, dnaa_end = dnaa_coords if dnaa_coords else (None, None)
-        oric_start, oric_end = oric_coords if oric_coords else (None, None)
+            dnaa_start, dnaa_end = dnaa_coords if dnaa_coords else (None, None)
+            oric_start, oric_end = oric_coords if oric_coords else (None, None)
 
-        genome_len = len(seq_adjusted)
+            genome_len = len(seq_adjusted)
 
-        # ---- CASE: both markers present ----
-        if dnaa_start is not None and oric_start is not None:
+            # ---- CASE: both markers present ----
+            if dnaa_start is not None and oric_start is not None:
 
-            dnaa_start = int(dnaa_start)
-            oric_start = int(oric_start)
+                dnaa_start = int(dnaa_start)
+                oric_start = int(oric_start)
 
-            # Compute circular distances
-            dist_dnaa_to_oric = (oric_start - dnaa_start) % genome_len
-            dist_oric_to_dnaa = (dnaa_start - oric_start) % genome_len
+                # Compute circular distances
+                dist_dnaa_to_oric = (oric_start - dnaa_start) % genome_len
+                dist_oric_to_dnaa = (dnaa_start - oric_start) % genome_len
 
-            # Choose anchor giving minimal separation
-            if dist_dnaa_to_oric < dist_oric_to_dnaa:
-                # dnaA → oriC forward distance is smaller
-                start_coord = dnaa_start
+                # Choose anchor giving minimal separation
+                if dist_dnaa_to_oric < dist_oric_to_dnaa:
+                    # dnaA → oriC forward distance is smaller
+                    start_coord = dnaa_start
+                    chosen_feature = "dnaA"
+                else:
+                    # oriC → dnaA forward distance is smaller
+                    start_coord = oric_start
+                    chosen_feature = "oriC"
+
+            # ---- CASE: only dnaA exists ----
+            elif dnaa_start is not None:
+                start_coord = int(dnaa_start)
                 chosen_feature = "dnaA"
-            else:
-                # oriC → dnaA forward distance is smaller
-                start_coord = oric_start
+
+            # ---- CASE: only oriC exists ----
+            elif oric_start is not None:
+                start_coord = int(oric_start)
                 chosen_feature = "oriC"
 
-        # ---- CASE: only dnaA exists ----
-        elif dnaa_start is not None:
-            start_coord = int(dnaa_start)
-            chosen_feature = "dnaA"
+            # ---- Perform rotation ----
+            rotated = rotate_sequence(seq_adjusted, start_coord - 1)
+            rotated_records.append((header, rotated))
+            # print(f"Rotated {header} using minimal-distance anchor: {chosen_feature} at {start_coord}")
 
-        # ---- CASE: only oriC exists ----
-        elif oric_start is not None:
-            start_coord = int(oric_start)
-            chosen_feature = "oriC"
+            write_intermediate_record_block(paths.report, header, top_dnaa, top_oric, pairs, chosen)
+        elif found == "ORIV":
+            rid = _record_id(header)
 
-        # ---- Perform rotation ----
-        rotated = rotate_sequence(seq_adjusted, start_coord - 1)
-        rotated_records.append((header, rotated))
-        # print(f"Rotated {header} using minimal-distance anchor: {chosen_feature} at {start_coord}")
+            top_oriv_hit = select_top_hits(oriv_hits_ext.get(rid, []), k=5)
+            oriv_start = chosen["adjusted_coordinates"]["start"]
+            rotated = rotate_sequence(seq_adjusted, oriv_start - 1)
+            rotated_records.append((header, rotated))
 
-        write_oric_record_block(paths.report, header, top_dnaa, top_oric, pairs, chosen)
+            write_intermediate_record_block(paths.report, header, None, top_oriv_hit, pairs, chosen)
+        else:
+            rotated_records.append((header, seq_adjusted))
+            write_intermediate_record_block(paths.report, header, None, None, pairs, chosen)
 
 
     # Rewrite final.fasta with rotated sequences
@@ -328,7 +399,7 @@ def run_full(args, logger=None):
             work_dir=args.out_dir,
             gcf_fasta_path=args.input
         )
-
+    # compute_genome_stats(paths.final_fasta)
     gp.finish()
 
     cleanup_unwanted_outputs(args.out_dir, logger)
