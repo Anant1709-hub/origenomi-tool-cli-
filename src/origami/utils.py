@@ -5,6 +5,12 @@ import time
 def midpoint(start: int, end: int) -> int:
     return (start + end) // 2
 
+def get_nc_id_from_header(header:str):
+    temp_header = header.replace('>','')
+    nc = temp_header.split()[0]
+
+    return nc
+
 def gc_at_content(seq: str):
     at = sum(1 for b in seq if b in "AaTt")
     gc = sum(1 for b in seq if b in "GgCc")

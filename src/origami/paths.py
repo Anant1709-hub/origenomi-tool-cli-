@@ -9,8 +9,10 @@ class Paths:
         self.temp_dir = os.path.join(out_dir, "temp_files")
         self.annotation_dir = os.path.join(self.temp_dir, "annotation")
         self.trim_dir = os.path.join(self.temp_dir, "trim")  
+        self.gbff_dir = os.path.join(self.temp_dir, "gbff_file")
         os.makedirs(self.annotation_dir, exist_ok=True)
         os.makedirs(self.trim_dir, exist_ok=True)
+        os.makedirs(self.gbff_dir, exist_ok=True)
 
         # original input fasta (copied for clarity)
         self.original_fasta = os.path.join(out_dir, f"origenomi_{self.prefix}_original.fna")

@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from .utils import get_nc_id_from_header
 
 def write_section_header(report_path: str, title: str, append: bool = False) -> None:
     mode = "a" if append else "w"
@@ -142,9 +143,12 @@ def write_extended_record_block(report_path: str, header: str,
 
 def write_original_record_block(report_path: str, header: str,
                                 chosen_dnaa: dict, chosen_oric: dict,
-                                genome_len: int):
+                                genome_len: int,nc_id_shape: dict):
+    
+    nc_id = get_nc_id_from_header(header)
+
     with open(report_path, "a") as f:
-        f.write(f">{header}\n")
+        f.write(f">{header}"+f", {nc_id_shape[nc_id]}"+"\n")
         if chosen_oric["oric_or_oriv"] == "ORIC":
             # ---------------- dnaA ----------------
             if chosen_dnaa:

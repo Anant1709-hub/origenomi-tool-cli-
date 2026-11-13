@@ -45,7 +45,7 @@ def parse_report(report_path):
     return results
 
 
-def generate_all_plots(fasta_output_path, report_path, rotated_fasta_path, work_dir, gcf_fasta_path):
+def generate_all_plots(fasta_output_path, report_path, rotated_fasta_path, work_dir, gcf_fasta_path,genome_length):
 
     plot_dir = os.path.join(work_dir, "plots")
     os.makedirs(plot_dir, exist_ok=True)
