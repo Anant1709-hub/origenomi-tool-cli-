@@ -428,8 +428,9 @@ def run_full(args, logger=None):
     if os.path.exists(paths.final_fasta):
         os.remove(paths.final_fasta)
     for header, seq in rotated_records:
-        
-        append_fasta_record(paths.final_fasta, header, seq)
+        nc_id = get_nc_id_from_header(header)
+        if nc_id_circular_or_linear[nc_id] == "circular":
+            append_fasta_record(paths.final_fasta, header, seq)
     
     if args.keep_plot:
         # print("[LOG] --keep-plot enabled → generating multi-sequence plots...")
