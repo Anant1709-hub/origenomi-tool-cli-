@@ -1,5 +1,6 @@
 import os
 import shutil
+import requests
 from .main import generate_all_plots
 from origami.circularize import prepare_chromosome_sequence, trim_extended_if_needed
 from origami.paths import resolve_paths
@@ -19,6 +20,8 @@ from origami.report import (
 from origami.utils import GlobalProgress
 import glob
 from origami.genome_stat import compute_genome_stats
+from .config import NCBI_URL
+from .utils import get_nc_id_from_header
 
 # Helper functions
 def _finalize(paths, keep_temp: bool, logger):
@@ -182,8 +185,15 @@ def run_full(args, logger=None):
     # Trim + Extend
     adjusted_records = []
     extension_added_to_a_seq = {}
-
+    nc_id_gbff = []
+    nc_id_circular_or_linear = {}
+    nc_id_genome_length = {}
+    url = NCBI_URL
     for header, seq in stream_fasta(args.input):
+
+        nc = get_nc_id_from_header(header)
+        nc_id_gbff.append(nc)
+
         trimmed_seq, trim_msg = detect_terminal_overlap(header, seq, paths, logger=logger)
         append_fasta_record(paths.original_fasta, header, trimmed_seq)
 
@@ -193,6 +203,35 @@ def run_full(args, logger=None):
 
         write_trim_record_block(paths.report, header, trim_msg)
         gp.update_trim(1)
+
+        params = {
+            "db": "nuccore",
+            "id": nc,
+            "rettype": "gb",
+            "retmode": "text"
+        }
+
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+
+        gbff = response.text
+
+        output_path = os.path.join(paths.gbff_dir, f"{nc}.gbff")
+        first_line = ''
+        with open(output_path, "w") as file:
+            file.write(gbff)
+
+        with open(output_path,"r") as file:
+            first_line = file.readline()
+
+        length_shape = first_line.split()
+
+        if "circular" in first_line.lower():
+            nc_id_circular_or_linear[nc] = "circular"
+        else:
+            nc_id_circular_or_linear[nc] = "linear"
+
+        nc_id_genome_length[nc] = length_shape[2]
 
     # BLAST on extended sequence only
     run_blast_annotation(paths.final_fasta, args.dnaA_db, paths.blast_dnaa_ext, evalue="1e-5", quiet=True)
@@ -302,7 +341,8 @@ def run_full(args, logger=None):
         write_original_record_block(paths.original_report, header,
                                     chosen_dnaa=chosen_dnaa_dict,
                                     chosen_oric=chosen_oric_oriv_dict,
-                                    genome_len=genome_len)
+                                    genome_len=genome_len,
+                                    nc_id_shape = nc_id_circular_or_linear)
 
     #  Overwrite final FASTA with adjusted sequences
     if os.path.exists(paths.final_fasta):
@@ -388,6 +428,7 @@ def run_full(args, logger=None):
     if os.path.exists(paths.final_fasta):
         os.remove(paths.final_fasta)
     for header, seq in rotated_records:
+        
         append_fasta_record(paths.final_fasta, header, seq)
     
     if args.keep_plot:
@@ -397,8 +438,10 @@ def run_full(args, logger=None):
             report_path=paths.original_report,
             rotated_fasta_path=paths.final_fasta,
             work_dir=args.out_dir,
-            gcf_fasta_path=args.input
-        )
+            gcf_fasta_path=args.input,
+            genome_length=nc_id_genome_length
+        )        
+
     # compute_genome_stats(paths.final_fasta)
     gp.finish()
 
