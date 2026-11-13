@@ -255,7 +255,7 @@ def adjust_for_oriv_extension(seq: str, extension_per_seq: dict,header: str, hit
         removed_extension = "start"
 
     oriv_wrap = None
-    if qstart > genome_len:
+    if qstart < genome_len and qend > genome_len :
             oriv_wrap = {
                 "is_wrapped": True,
                 "qstart": qstart,
