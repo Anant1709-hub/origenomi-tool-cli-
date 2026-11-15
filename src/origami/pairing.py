@@ -259,7 +259,7 @@ def adjust_for_oriv_extension(seq: str, extension_per_seq: dict,header: str, hit
             oriv_wrap = {
                 "is_wrapped": True,
                 "qstart": qstart,
-                "remaining": qend,
+                "remaining": qend - genome_len,
                 "genome_len": genome_len
             }
 
