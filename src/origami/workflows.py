@@ -337,7 +337,7 @@ def run_full(args, logger=None):
                                     )
 
         # Write original report (coordinates mapped back using wrap_info)
-        genome_len = len(seq) - 4000  # original genome length
+        genome_len = len(seq) - extension_added_to_a_seq[header]  # original genome length
         write_original_record_block(paths.original_report, header,
                                     chosen_dnaa=chosen_dnaa_dict,
                                     chosen_oric=chosen_oric_oriv_dict,
