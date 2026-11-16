@@ -246,7 +246,7 @@ def run_full(args, logger=None):
             run_oriv = True
             break
 
-    oriv_hits_ext = None
+    oriv_hits_ext = {}
     if run_oriv:
         run_blast_annotation(paths.final_fasta, args.oriv_db, paths.blast_oriv_ext, evalue="1e-5", quiet=True)
         oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext,num_oric_hits)
