@@ -1,168 +1,113 @@
-#!/usr/bin/env python3
-import os
-import re
-import subprocess
-import matplotlib.pyplot as plt
-from Bio import SeqIO
 
+    # --------------------------------------------------------
+    # PROCESS EACH REPLICON
+    # --------------------------------------------------------
 
-# ------------------------------------------------------------
-# EXTRACT dnaA + oriC FROM REPORT
-# ------------------------------------------------------------
-def extract_coords(report_path):
-    dnaA = None
-    oriC = None
+    for accession in common_accessions:
 
-    with open(report_path) as f:
-        lines = f.readlines()
+        print("\n" + "=" * 65)
+        print("PROCESSING:", accession)
+        print("=" * 65)
 
-    for i, line in enumerate(lines):
-        if "Chosen dnaA:" in line:
-            for j in range(i, min(i + 8, len(lines))):
-                if "Coords:" in lines[j]:
-                    nums = re.findall(r"\d+", lines[j])
-                    if nums:
-                        dnaA = int(nums[0])
-                        break
+        original_record = original_records[accession]
+        rotated_record = rotated_records[accession]
 
-        if "Chosen oriC:" in line:
-            for j in range(i, min(i + 8, len(lines))):
-                if "Coords:" in lines[j]:
-                    nums = re.findall(r"\d+", lines[j])
-                    if nums:
-                        oriC = int(nums[0])
-                        break
+        original_temp = None
+        rotated_temp = None
 
-    if dnaA is None or oriC is None:
-        raise ValueError("dnaA or oriC coordinates missing in report.")
+        try:
 
-    return dnaA, oriC
+            # ------------------------------------------------
+            # CREATE TEMPORARY SINGLE-RECORD FASTA FILES
+            # ------------------------------------------------
 
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".fna",
+                prefix=f".{accession}_original_",
+                dir=output_dir,
+                delete=False
+            ) as temp:
 
-# ------------------------------------------------------------
-# ROTATION CALCULATION (MATCH CIRCOS LOGIC)
-# ------------------------------------------------------------
-def compute_rotated_positions(dnaA, oriC, genome_len):
-    # shortest-arc rule (same as circos)
-    a, b = sorted([dnaA, oriC])
-    d = b - a
-    shift_bp = b if d > genome_len / 2 else a
+                original_temp = temp.name
 
-    dnaA_rot = (dnaA - shift_bp) % genome_len
-    oriC_rot = (oriC - shift_bp) % genome_len
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".fna",
+                prefix=f".{accession}_rotated_",
+                dir=output_dir,
+                delete=False
+            ) as temp:
 
-    return shift_bp, dnaA_rot, oriC_rot
+                rotated_temp = temp.name
 
+            # Write original record
+            SeqIO.write(
+                original_record,
+                original_temp,
+                "fasta"
+            )
 
-# ------------------------------------------------------------
-# PARSE NUCMER COORDS
-# ------------------------------------------------------------
-def parse_blocks(coords_path):
-    blocks = []
-    with open(coords_path) as f:
-        for line in f:
-            parts = line.split()
-            if len(parts) >= 4 and parts[0].isdigit():
-                s1, e1, s2, e2 = map(int, parts[:4])
-                blocks.append((s1, e1, s2, e2))
+            # Write corresponding rotated record
+            SeqIO.write(
+                rotated_record,
+                rotated_temp,
+                "fasta"
+            )
 
-    return blocks
+            # ------------------------------------------------
+            # GENERATE DOT PLOT
+            # ------------------------------------------------
 
+            output_png = plot_dotplot(
+                os.path.basename(original_temp),
+                os.path.basename(rotated_temp),
+                report_file,
+                output_dir,
+                plots_dir
+            )
 
-# ------------------------------------------------------------
-# RUN NUCMER + SHOW-COORDS
-# ------------------------------------------------------------
-def run_nucmer(original_fna, rotated_fna, work_dir):
-    prefix = os.path.join(work_dir, "dotplot_output")
+            print("PNG:", output_png)
 
-    subprocess.run(
-        ["nucmer", "--mum", "-g", "1000", "-p", prefix, original_fna, rotated_fna],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True
-    )
+            print(
+                "SVG:",
+                output_png.replace(".png", ".svg")
+            )
 
-    coords_path = os.path.join(work_dir, "coords.txt")
+            successful += 1
 
-    with open(coords_path, "w") as out:
-        subprocess.run(
-            ["show-coords", "-THrd", f"{prefix}.delta"],
-            stdout=out,
-            check=True
-        )
+        except Exception as e:
 
-    return coords_path
+            print(
+                f"ERROR processing {accession}: {e}"
+            )
 
+            failed += 1
 
-# ------------------------------------------------------------
-# GENERATE DOT PLOT
-# ------------------------------------------------------------
-def generate_dotplot(blocks, dnaA, oriC, dnaA_rot, oriC_rot, out_path):
-    plt.figure(figsize=(8, 8))
+        finally:
 
-    # alignment blocks
-    for s1, e1, s2, e2 in blocks:
-        same_direction = (e2 - s2) * (e1 - s1) > 0
-        color = "blue" if same_direction else "orange"
-        plt.plot([s1, e1], [s2, e2], color=color, linewidth=1)
+            # --------------------------------------------
+            # REMOVE TEMPORARY FASTA FILES
+            # --------------------------------------------
 
-    # vertical markers (original genome)
-    plt.axvline(dnaA, color="red", linewidth=1.8)
-    plt.axvline(oriC, color="green", linestyle=":", linewidth=1.8)
+            if original_temp and os.path.exists(original_temp):
+                os.remove(original_temp)
 
-    # horizontal markers (rotated genome)
-    plt.axhline(dnaA_rot, color="red", linewidth=1.8)
-    plt.axhline(oriC_rot, color="green", linestyle=":", linewidth=1.8)
+            if rotated_temp and os.path.exists(rotated_temp):
+                os.remove(rotated_temp)
 
-    plt.title("Dot Plot (dnaA = red, oriC = green)", fontsize=11, fontweight="bold")
-    plt.xlabel("Original Genome Position (bp)")
-    plt.ylabel("Rotated Genome Position (bp)")
-    plt.tight_layout()
+    # --------------------------------------------------------
+    # FINAL SUMMARY
+    # --------------------------------------------------------
 
-    # Save
-    png = out_path + ".png"
-    svg = out_path + ".svg"
+    print("\n" + "=" * 65)
+    print("DOT PLOT GENERATION COMPLETED")
+    print("=" * 65)
 
-    plt.savefig(png, dpi=300)
-    plt.savefig(svg)
-    plt.close()
+    print("Total original replicons:", len(original_records))
+    print("Matching replicons:", len(common_accessions))
+    print("Successfully generated:", successful)
+    print("Failed:", failed)
 
-    return png
+    print("\nOutput directory:", plots_dir)
 
-
-# ------------------------------------------------------------
-# MAIN EXPORTED FUNCTION FOR FastAPI
-# ------------------------------------------------------------
-def plot_dotplot(original_fna, rotated_fna, report_file, output_dir):
-    """
-    FastAPI expects:
-        original_fna  = basename string
-        rotated_fna   = basename string
-        report_file   = basename string
-        output_dir    = absolute path
-
-    Returns:
-        PNG file path
-    """
-    original_path = os.path.join(output_dir, original_fna)
-    rotated_path = os.path.join(output_dir, rotated_fna)
-    report_path = os.path.join(output_dir, report_file)
-
-    # extract dnaA/oriC
-    dnaA, oriC = extract_coords(report_path)
-
-    # genome length
-    genome_len = len(next(SeqIO.parse(rotated_path, "fasta")).seq)
-
-    # compute rotated alignment positions
-    _, dnaA_rot, oriC_rot = compute_rotated_positions(dnaA, oriC, genome_len)
-
-    # run nucmer + parse coords
-    coords_path = run_nucmer(original_path, rotated_path, output_dir)
-    blocks = parse_blocks(coords_path)
-
-    # output prefix
-    out_path = os.path.join(output_dir, "dotplot_highlighted_circos_logic")
-
-    # create plot
-    return generate_dotplot(blocks, dnaA, oriC, dnaA_rot, oriC_rot, out_path)

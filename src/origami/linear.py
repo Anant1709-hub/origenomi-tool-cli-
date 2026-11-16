@@ -76,7 +76,9 @@ def run_linear_synteny_plot(work_dir):
     # 5. SAVE PNG
     # ------------------------------------------------------------
     src = os.path.join(outdir, "result.png")
-    dst = os.path.join(work_dir, "pgv.png")
+    plots_dir = os.path.join(os.path.dirname(work_dir), "plots")
+    os.makedirs(plots_dir, exist_ok=True)
+    dst = os.path.join(plots_dir, "pgv.png")
 
     if os.path.exists(src):
         shutil.copy(src, dst)
