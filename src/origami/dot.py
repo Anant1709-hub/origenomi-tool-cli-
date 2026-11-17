@@ -384,45 +384,60 @@ def plot_dotplot(
     rotated_fna,
     report_file,
     output_dir,
+    accession=None,
     plot_output_dir=None
 ):
+    """
+    Generate a dot plot for one selected replicon.
 
-    original_path = os.path.join(
-        output_dir,
-        original_fna
-    )
+    Compatible with main.py:
+        plot_dotplot(
+            basename(original_fna),
+            basename(rotated_fna),
+            basename(report_file),
+            output_dir=work_dir,
+            accession=seq_id,
+            plot_output_dir=plot_dir
+        )
 
-    rotated_path = os.path.join(
-        output_dir,
-        rotated_fna
-    )
+    If accession is omitted, the first original FASTA record is used.
+    The graph styling and alignment-block plotting are unchanged.
+    """
 
-    report_path = os.path.join(
-        output_dir,
-        report_file
-    )
+    original_path = os.path.join(output_dir, original_fna)
+    rotated_path = os.path.join(output_dir, rotated_fna)
+    report_path = os.path.join(output_dir, report_file)
 
-    # Keep input FASTA/report files in output_dir, but save
-    # generated dot plots in the shared plots directory.
     if plot_output_dir is None:
-        plot_output_dir = os.path.join(output_dir, "plots")
+        plot_output_dir = output_dir
 
     os.makedirs(plot_output_dir, exist_ok=True)
 
     # --------------------------------------------------------
-    # READ ORIGINAL FASTA RECORD
+    # LOAD FASTA RECORDS AND SELECT THE REQUESTED REPLICON
     # --------------------------------------------------------
 
-    original_record = next(
-        SeqIO.parse(original_path, "fasta")
-    )
+    original_records = {
+        record.id: record
+        for record in SeqIO.parse(original_path, "fasta")
+    }
 
-    accession = original_record.id
+    if not original_records:
+        raise ValueError(f"No FASTA records found in {original_path}")
 
+    if accession is None:
+        accession = next(iter(original_records))
+
+    if accession not in original_records:
+        raise ValueError(
+            f"Accession {accession} not found in original FASTA."
+        )
+
+    original_record = original_records[accession]
     genome_len = len(original_record.seq)
 
     # --------------------------------------------------------
-    # EXTRACT MARKERS AND TOPOLOGY
+    # EXTRACT MARKERS AND TOPOLOGY FOR THIS ACCESSION
     # --------------------------------------------------------
 
     dnaA, origin, origin_name, replicon_type, topology = extract_coords(
@@ -437,59 +452,93 @@ def plot_dotplot(
     print("Origin:", origin_name, origin)
 
     # --------------------------------------------------------
-    # SELECT FASTA FOR COMPARISON
+    # CREATE SINGLE-REPLICON TEMPORARY FASTA FILES
+    # This prevents NUCmer from comparing every record in a
+    # multi-record FASTA during each main.py loop iteration.
     # --------------------------------------------------------
 
-    if topology == "linear":
-
-        # Linear chromosome or plasmid:
-        # Compare original FASTA against itself
-        comparison_path = original_path
-
-        print("Linear replicon detected.")
-        print("Rotation disabled.")
-
-    else:
-
-        # Circular chromosome or plasmid:
-        # Compare original FASTA against rotated FASTA
-        comparison_path = rotated_path
-
-        print("Circular replicon detected.")
-        print("Using rotated FASTA.")
-
-    # --------------------------------------------------------
-    # COMPUTE MARKER POSITIONS
-    # --------------------------------------------------------
-
-    _, dnaA_rot, origin_rot = compute_rotated_positions(
-        dnaA,
-        origin,
-        genome_len,
-        replicon_type,
-        topology
-    )
-
-    print("Original origin position:", origin)
-    print("Comparison origin position:", origin_rot)
-
-    if replicon_type == "chromosome":
-
-        print("Original dnaA position:", dnaA)
-        print("Comparison dnaA position:", dnaA_rot)
-
-    # --------------------------------------------------------
-    # RUN NUCMER AND GENERATE PLOT
-    # --------------------------------------------------------
-
+    original_temp = None
+    comparison_temp = None
     coords_path = None
     prefix = None
 
     try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".fna",
+            prefix=f".{accession}_dot_original_",
+            dir=output_dir,
+            delete=False
+        ) as temp:
+            original_temp = temp.name
+
+        SeqIO.write(original_record, original_temp, "fasta")
+
+        # ----------------------------------------------------
+        # SELECT COMPARISON FASTA
+        # ----------------------------------------------------
+
+        if topology == "linear":
+            # Linear replicons are compared against themselves.
+            comparison_record = original_record
+
+            print("Linear replicon detected.")
+            print("Rotation disabled.")
+
+        else:
+            # Circular replicons use their corresponding rotated record.
+            rotated_records = {
+                record.id: record
+                for record in SeqIO.parse(rotated_path, "fasta")
+            }
+
+            if accession not in rotated_records:
+                raise ValueError(
+                    f"Accession {accession} not found in rotated FASTA."
+                )
+
+            comparison_record = rotated_records[accession]
+
+            print("Circular replicon detected.")
+            print("Using rotated FASTA.")
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".fna",
+            prefix=f".{accession}_dot_comparison_",
+            dir=output_dir,
+            delete=False
+        ) as temp:
+            comparison_temp = temp.name
+
+        SeqIO.write(comparison_record, comparison_temp, "fasta")
+
+        # ----------------------------------------------------
+        # COMPUTE MARKER POSITIONS
+        # ----------------------------------------------------
+
+        _, dnaA_rot, origin_rot = compute_rotated_positions(
+            dnaA,
+            origin,
+            genome_len,
+            replicon_type,
+            topology
+        )
+
+        print("Original origin position:", origin)
+        print("Comparison origin position:", origin_rot)
+
+        if replicon_type == "chromosome":
+            print("Original dnaA position:", dnaA)
+            print("Comparison dnaA position:", dnaA_rot)
+
+        # ----------------------------------------------------
+        # RUN NUCMER AND GENERATE PLOT
+        # ----------------------------------------------------
 
         coords_path, prefix = run_nucmer(
-            original_path,
-            comparison_path,
+            original_temp,
+            comparison_temp,
             output_dir,
             accession
         )
@@ -512,27 +561,25 @@ def plot_dotplot(
         )
 
         print("Successfully generated:", output_png)
-
         return output_png
 
     finally:
-
-        # Remove temporary NUCmer output files
+        # Remove temporary NUCmer output files.
         if coords_path and os.path.exists(coords_path):
             os.remove(coords_path)
 
         if prefix:
-
-            for extension in [
-                ".delta",
-                ".ntref",
-                ".ntqry"
-            ]:
-
+            for extension in [".delta", ".ntref", ".ntqry"]:
                 temp_file = prefix + extension
-
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+
+        # Remove temporary single-record FASTA files.
+        if original_temp and os.path.exists(original_temp):
+            os.remove(original_temp)
+
+        if comparison_temp and os.path.exists(comparison_temp):
+            os.remove(comparison_temp)
 
 
 # ============================================================
@@ -555,11 +602,6 @@ def plot_all_replicons(
         output_dir,
         rotated_fna
     )
-
-    # Shared output folder used by circos_tools.py as well.
-    # Both scripts should point to this same parent directory.
-    plots_dir = os.path.join(output_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
 
     # --------------------------------------------------------
     # LOAD ALL FASTA RECORDS
@@ -671,8 +713,7 @@ def plot_all_replicons(
                 os.path.basename(original_temp),
                 os.path.basename(rotated_temp),
                 report_file,
-                output_dir,
-                plots_dir
+                output_dir
             )
 
             print("PNG:", output_png)
@@ -717,4 +758,5 @@ def plot_all_replicons(
     print("Successfully generated:", successful)
     print("Failed:", failed)
 
-    print("\nOutput directory:", plots_dir)
+    print("\nOutput directory:", output_dir)
+
