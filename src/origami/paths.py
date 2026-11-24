@@ -3,9 +3,10 @@ from pathlib import Path
 
 class Paths:
     def __init__(self, input_file: str, out_dir: str):
+        input_file = check_space_in_path(input_file)
         self.prefix = Path(input_file).stem
         self.out_dir = out_dir
-
+        
         self.temp_dir = os.path.join(out_dir, "temp_files")
         self.annotation_dir = os.path.join(self.temp_dir, "annotation")
         self.trim_dir = os.path.join(self.temp_dir, "trim")  
@@ -36,3 +37,7 @@ def resolve_paths(input_file: str, out_dir: str) -> Paths:
     Creates a Paths object with organized file structure for the pipeline.
     """
     return Paths(input_file, out_dir)
+
+def check_space_in_path(input_file: str):
+    input_file_name = input_file.replace(' ','')
+    return input_file_name
