@@ -440,7 +440,8 @@ def run_full(args, logger=None):
             rotated_fasta_path=paths.final_fasta,
             work_dir=args.out_dir,
             gcf_fasta_path=args.input,
-            genome_length=nc_id_genome_length
+            genome_length=nc_id_genome_length,
+            rotation_report=paths.rotation_report
         )        
 
     # compute_genome_stats(paths.final_fasta)

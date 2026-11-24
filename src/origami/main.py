@@ -6,6 +6,8 @@ from .circos_tools import plot_circos, plot_rotated_circos
 from .dot import plot_dotplot
 from .linear import run_linear_synteny_plot
 from .genome_stat import compute_genome_stats
+from .report import write_rotation_report
+from origami.paths import resolve_paths
 
 def _find_record(fna_path, accession):
     for record in SeqIO.parse(fna_path, "fasta"):
@@ -99,11 +101,11 @@ def generate_all_plots(
     work_dir,
     gcf_fasta_path,
     genome_length,
+    rotation_report
 ):
     # One shared directory for all generated plot types.
     plot_dir = os.path.join(work_dir, "plot")
     os.makedirs(plot_dir, exist_ok=True)
-
     report_info = parse_report(report_path)
 
     for seq_id, data in report_info.items():
@@ -154,10 +156,12 @@ def generate_all_plots(
             if dist_dnaa_to_oric < dist_oric_to_dnaa:
                 shift_bp = dnaA_start
                 print(f"{seq_id}: Rotating from dnaA at {shift_bp}")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"dnaA")
 
             else:
                 shift_bp = oriC_start
                 print(f"{seq_id}: Rotating from oriC at {shift_bp}")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"oriC")
 
 
         orig_png = plot_circos(
