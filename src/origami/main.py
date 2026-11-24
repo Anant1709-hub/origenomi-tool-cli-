@@ -7,7 +7,6 @@ from .dot import plot_dotplot
 from .linear import run_linear_synteny_plot
 from .genome_stat import compute_genome_stats
 from .report import write_rotation_report
-from origami.paths import resolve_paths
 
 def _find_record(fna_path, accession):
     for record in SeqIO.parse(fna_path, "fasta"):
@@ -125,6 +124,7 @@ def generate_all_plots(
             oriC_list = []
             oriV_start = data["oriV_start"]
             shift_bp = oriV_start
+            write_rotation_report(rotation_report,seq_id,shift_bp,"oriv")
 
         else:
 
@@ -161,7 +161,7 @@ def generate_all_plots(
             else:
                 shift_bp = oriC_start
                 print(f"{seq_id}: Rotating from oriC at {shift_bp}")
-                write_rotation_report(rotation_report,seq_id,shift_bp,"oriC")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"oric")
 
 
         orig_png = plot_circos(
