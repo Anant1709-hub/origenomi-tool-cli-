@@ -124,7 +124,7 @@ def generate_all_plots(
             oriC_list = []
             oriV_start = data["oriV_start"]
             shift_bp = oriV_start
-            write_rotation_report(rotation_report,seq_id,shift_bp,"oriv")
+            write_rotation_report(rotation_report,seq_id,shift_bp,"oriv",genome_length[seq_id])
 
         else:
 
@@ -156,12 +156,12 @@ def generate_all_plots(
             if dist_dnaa_to_oric < dist_oric_to_dnaa:
                 shift_bp = dnaA_start
                 print(f"{seq_id}: Rotating from dnaA at {shift_bp}")
-                write_rotation_report(rotation_report,seq_id,shift_bp,"dnaA")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"dnaA",genome_length[seq_id])
 
             else:
                 shift_bp = oriC_start
                 print(f"{seq_id}: Rotating from oriC at {shift_bp}")
-                write_rotation_report(rotation_report,seq_id,shift_bp,"oric")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"oric",genome_length[seq_id])
 
 
         orig_png = plot_circos(
