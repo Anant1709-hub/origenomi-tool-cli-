@@ -161,7 +161,7 @@ def generate_all_plots(
             else:
                 shift_bp = oriC_start
                 print(f"{seq_id}: Rotating from oriC at {shift_bp}")
-                write_rotation_report(rotation_report,seq_id,shift_bp,"oriC")
+                write_rotation_report(rotation_report,seq_id,shift_bp,"oric")
 
 
         orig_png = plot_circos(
