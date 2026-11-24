@@ -235,3 +235,8 @@ def write_original_record_block(report_path: str, header: str,
                 f.write(f"No oriC Found\n")
                 f.write(f"No dnaA Found\n")
         f.write("\n")
+
+def write_rotation_report(report_path: str,seq_id: str,shift_bp,origin: str):
+
+    with open(report_path, "a") as f:
+        f.write(f"{seq_id}: Rotating from {origin} at {shift_bp}")

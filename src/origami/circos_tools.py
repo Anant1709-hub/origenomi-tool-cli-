@@ -368,5 +368,5 @@ def plot_all_replicons(fna_path, report_path, output_dir=None):
     """
     raise NotImplementedError(
         "Use main.py's generate_all_plots() workflow so oriV, topology, "
-        "and replicon type are passed explicitly."
+        "and replicon type are passed explicitly."  
     )

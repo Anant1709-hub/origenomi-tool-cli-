@@ -24,6 +24,7 @@ class Paths:
         self.report = os.path.join(out_dir, f"origenomi_{self.prefix}_report.txt")              
         self.original_report = os.path.join(out_dir, f"origenomi_{self.prefix}_original_report.txt")
         self.extended_report = os.path.join(out_dir, f"origenomi_{self.prefix}_extended_report.txt")
+        self.rotation_report = os.path.join(out_dir, f"origenomi_{self.prefix}_rotation_report.txt")
 
         self.blast_dnaa_ext = os.path.join(self.annotation_dir, f"{self.prefix}_dnaa_extended.blast")
         self.blast_oric_ext = os.path.join(self.annotation_dir, f"{self.prefix}_oric_extended.blast")
