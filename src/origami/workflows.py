@@ -15,7 +15,8 @@ from origami.report import (
     write_trim_record_block,
     write_intermediate_record_block,
     write_extended_record_block,
-    write_original_record_block,   
+    write_original_record_block,
+    clean_report_headers   
 )
 from origami.utils import GlobalProgress
 import glob
@@ -444,6 +445,7 @@ def run_full(args, logger=None):
             rotation_report=paths.rotation_report
         )        
 
+    clean_report_headers(paths.original_report)
     # compute_genome_stats(paths.final_fasta)
     gp.finish()
 

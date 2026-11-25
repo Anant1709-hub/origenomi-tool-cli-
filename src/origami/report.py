@@ -1,3 +1,5 @@
+import os
+import re
 from typing import List, Dict, Any
 from .utils import get_nc_id_from_header
 
@@ -240,3 +242,20 @@ def write_rotation_report(report_path: str,seq_id: str,shift_bp,origin: str,geno
 
     with open(report_path, "a") as f:
         f.write(f"{seq_id}: Rotating from {origin} at {shift_bp} for {genome_length}\n")
+
+def clean_report_headers(report_path: str):
+    if not os.path.exists(report_path):
+        return
+
+    with open(report_path, "r") as f:
+        lines = f.readlines()
+
+    cleaned_lines = []
+    for line in lines:
+        if line.startswith(">"):
+            # Removes ', circular' or ', linear' (case-insensitive) at the end of header lines
+            line = re.sub(r",\s*(circular|linear)\s*$", "\n", line, flags=re.IGNORECASE)
+        cleaned_lines.append(line)
+
+    with open(report_path, "w") as f:
+        f.writelines(cleaned_lines)
