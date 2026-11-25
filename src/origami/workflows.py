@@ -20,7 +20,6 @@ from origami.report import (
 )
 from origami.utils import GlobalProgress
 import glob
-from origami.genome_stat import compute_genome_stats
 from .config import NCBI_URL
 from .utils import get_nc_id_from_header
 
@@ -44,73 +43,6 @@ def _count_records(fasta_path: str) -> int:
             if line.startswith(">"):
                 n += 1
     return n
-
-
-# run_trim_only()
-def run_trim_only(args, logger=None):
-    paths = resolve_paths(args.input, args.out_dir)
-    write_section_header(paths.report, "Trim Analysis")
-
-    n = _count_records(args.input)
-    gp = GlobalProgress(n, weights=(1.0, 0.0, 0.0, 0.0), label="origami")
-    gp.start()
-
-    i = 0
-    for header, seq in stream_fasta(args.input):
-        trimmed_seq, trim_msg = detect_terminal_overlap(header, seq, paths, logger=logger)
-        append_fasta_record(paths.final_fasta, header, trimmed_seq)
-        write_trim_record_block(paths.report, header, trim_msg)
-        i += 1
-        gp.update_trim(i)
-
-    gp.finish()
-    _finalize(paths, args.keep_temp, logger)
-
-
-# run_oric_only()
-def run_oric_only(args, logger=None):
-    paths = resolve_paths(args.input, args.out_dir)
-    shutil.copyfile(args.input, paths.final_fasta)
-    if logger:
-        logger.debug(f"Copied input → {paths.final_fasta}")
-
-    n = _count_records(paths.final_fasta)
-    gp = GlobalProgress(n, weights=(0.0, 0.40, 0.40, 0.20), label="origami")
-    gp.start()
-
-    run_blast_annotation(paths.final_fasta, args.dnaA_db, paths.blast_dnaa, evalue="1e-5", quiet=True)
-    gp.mark_dnaa_done()
-
-    run_blast_annotation(paths.final_fasta, args.oric_db, paths.blast_oric, evalue="1e-5", quiet=True)
-    gp.mark_oric_done()
-
-    dnaA_hits_all = parse_blast_annotation(paths.blast_dnaa)
-    oriC_hits_all = parse_blast_annotation(paths.blast_oric)
-
-    write_section_header(paths.report, "OriC Analysis")
-
-    rotated_records = []
-    j = 0
-    for header, seq in stream_fasta(paths.final_fasta):
-        rid = _record_id(header)
-        top_dnaa = select_top_hits(dnaA_hits_all.get(rid, []), k=3)
-        top_oric = select_top_hits(oriC_hits_all.get(rid, []), k=10)
-        pairs, chosen = pair_and_choose(rid, seq, top_dnaa, top_oric)
-
-        rotated = rotate_sequence(seq, chosen["start_coord"])
-        rotated_records.append((header, rotated))
-        write_oric_record_block(paths.report, header, top_dnaa, top_oric, pairs, chosen)
-        j += 1
-        gp.update_rotate(j)
-
-    # Rewrite FASTA
-    if os.path.exists(paths.final_fasta):
-        os.remove(paths.final_fasta)
-    for header, seq in rotated_records:
-        append_fasta_record(paths.final_fasta, header, seq)
-
-    gp.finish()
-    _finalize(paths, args.keep_temp, logger)
 
 def ensure_input_in_outdir(input_fasta, out_dir, logger=None):
     """
@@ -190,10 +122,16 @@ def run_full(args, logger=None):
     nc_id_circular_or_linear = {}
     nc_id_genome_length = {}
     url = NCBI_URL
+    nc_id_plasmid_chromosome = {}
     for header, seq in stream_fasta(args.input):
-
         nc = get_nc_id_from_header(header)
         nc_id_gbff.append(nc)
+
+        # Checking if the seq is plasmid or chomosome and saving it in nc_id_plasmid_chromosome
+        if "plasmid" in header.lower():
+            nc_id_plasmid_chromosome[nc] = "plasmid"
+        else:
+            nc_id_plasmid_chromosome[nc] = "chromosome"
 
         trimmed_seq, trim_msg = detect_terminal_overlap(header, seq, paths, logger=logger)
         append_fasta_record(paths.original_fasta, header, trimmed_seq)
@@ -241,20 +179,21 @@ def run_full(args, logger=None):
     dnaA_hits_ext,num_dnaa_hits = parse_blast_annotation(paths.blast_dnaa_ext)
     oriC_hits_ext,num_oric_hits = parse_blast_annotation(paths.blast_oric_ext)
 
-    run_oriv = False
-    for value in num_oric_hits.values():
-        if value == 0:
-            run_oriv = True
-            break
+    plasmids_needing_oriv = {
+        nc for nc, count in num_oric_hits.items()
+        if count == 0 and nc_id_plasmid_chromosome.get(nc) == "plasmid"
+    }
 
     oriv_hits_ext = {}
-    if run_oriv:
+    if plasmids_needing_oriv:
         run_blast_annotation(paths.final_fasta, args.oriv_db, paths.blast_oriv_ext, evalue="1e-5", quiet=True)
-        oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext,num_oric_hits)
+        oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext, num_oric_hits)
 
     # Extended + Original reports (from extended hits)
     for header, seq in stream_fasta(paths.final_fasta):
         rid = _record_id(header)
+        nc = get_nc_id_from_header(header)
+        is_plasmid = (nc_id_plasmid_chromosome.get(nc) == "plasmid")
 
         top_dnaa_ext = select_top_hits(dnaA_hits_ext.get(rid, []), k=3)
         top_oric_ext = select_top_hits(oriC_hits_ext.get(rid, []), k=7)
@@ -263,18 +202,12 @@ def run_full(args, logger=None):
         
         # Pairing using extended sequence
         pairs, chosen, seq_adjusted = pair_and_choose(rid, seq, top_dnaa_ext, top_oric_ext)
-        # print("###########################################")
-        # print("ORIC")
-        # print(pairs)
-        # print(chosen)
-        # print("###########################################")
+        chosen = chosen or {}
 
-        info_after_adj = adjust_for_oriv_extension(seq,extension_added_to_a_seq,header,selected_oriv_hit)
-        # print("###########################################")
-        # print("ORIV")
-        # info_after_adj["sequence"] = info_after_adj["sequence"][:6]
-        # print(info_after_adj)
-        # print("###########################################")
+        info_after_adj = (
+            adjust_for_oriv_extension(seq, extension_added_to_a_seq, header, selected_oriv_hit)
+            if is_plasmid else {}
+        )
 
         found = None
         if len(pairs) != 0:
@@ -446,7 +379,6 @@ def run_full(args, logger=None):
         )        
 
     clean_report_headers(paths.original_report)
-    # compute_genome_stats(paths.final_fasta)
     gp.finish()
 
     cleanup_unwanted_outputs(args.out_dir, logger)
