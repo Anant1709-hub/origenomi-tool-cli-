@@ -176,7 +176,7 @@ def generate_all_plots(
         )
 
         rot_png = plot_rotated_circos(
-            rotated_fasta_path,
+            gcf_fasta_path,
             seq_id,
             dnaA_start,
             oriC_list,
@@ -202,13 +202,13 @@ def generate_all_plots(
         if dot_png and os.path.abspath(os.path.dirname(dot_png)) != os.path.abspath(plot_dir):
             shutil.copy2(dot_png, os.path.join(plot_dir, f"{seq_id}_dotplot.png"))
 
-        synteny_dir = os.path.join(work_dir, "linear_synteny")
-        os.makedirs(synteny_dir, exist_ok=True)
+    synteny_dir = os.path.join(work_dir, "linear_synteny")
+    os.makedirs(synteny_dir, exist_ok=True)
 
-        syn_png = run_linear_synteny_plot(synteny_dir)
-        if syn_png and os.path.exists(syn_png):
-            destination = os.path.join(plot_dir, f"{seq_id}_linear_synteny.png")
-            if os.path.abspath(syn_png) != os.path.abspath(destination):
-                shutil.copy2(syn_png, destination)
+    syn_png = run_linear_synteny_plot(synteny_dir)
+     #   if syn_png and os.path.exists(syn_png):
+     #       destination = os.path.join(plot_dir, f"{seq_id}_linear_synteny.png")
+     #       if os.path.abspath(syn_png) != os.path.abspath(destination):
+     #           shutil.copy2(syn_png, destination)
 
     return plot_dir

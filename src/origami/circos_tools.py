@@ -224,9 +224,7 @@ def _prepare_plot_inputs(
     topology="circular",
 ):
     """Load one replicon and select the correct origin marker."""
-    if topology != "circular":
-        print(f"Skipping {accession}: topology is {topology!r}; Circos plots require circular replicons.")
-        return None
+    topology = topology.lower()
 
     record = _find_record(fna_path, accession)
     seq = str(record.seq)
@@ -259,6 +257,8 @@ def _prepare_plot_inputs(
     return record, genome_len, skew, replicon_type, dnaA, origin, origin_name
 
 
+
+
 def plot_circos(
     fna_path,
     accession,
@@ -270,11 +270,12 @@ def plot_circos(
     topology="circular",
 ):
     """
-    Create the non-rotated Circos plot.
+    Create the original Circos plot for both circular and linear replicons.
 
-    The first five parameters match main.py. The final three allow
-    main.py to pass plasmid oriV and replicon metadata.
+    Both topologies use the same circular visualization.
+    Only circular replicons receive a rotated plot.
     """
+
     prepared = _prepare_plot_inputs(
         fna_path,
         accession,
@@ -285,10 +286,21 @@ def plot_circos(
         replicon_type=replicon_type,
         topology=topology,
     )
+
     if prepared is None:
         return None
 
-    record, genome_len, skew, rep_type, dnaA, origin, origin_name = prepared
+    (
+        record,
+        genome_len,
+        skew,
+        rep_type,
+        dnaA,
+        origin,
+        origin_name,
+    ) = prepared
+
+    # Always generate the same original Circos plot.
     return generate_circos(
         record,
         genome_len,
@@ -302,6 +314,8 @@ def plot_circos(
     )
 
 
+
+
 def plot_rotated_circos(
     fna_path,
     accession,
@@ -313,6 +327,14 @@ def plot_rotated_circos(
     replicon_type="chromosome",
     topology="circular",
 ):
+    topology = topology.lower()
+
+    if topology == "linear":
+        print(
+            f"Skipping rotated plot for {accession}: "
+            "linear replicons are not rotated."
+        )
+        return None
     """
     Create the rotated Circos plot.
 
