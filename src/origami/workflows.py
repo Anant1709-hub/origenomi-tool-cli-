@@ -2,7 +2,7 @@ import os
 import shutil
 import requests
 from .main import generate_all_plots
-from origami.circularize import prepare_chromosome_sequence, trim_extended_if_needed
+from origami.circularize import prepare_chromosome_sequence
 from origami.paths import resolve_paths
 from origami.io import stream_fasta, append_fasta_record
 from origami.trim import detect_terminal_overlap
@@ -23,7 +23,6 @@ import glob
 from .config import NCBI_URL
 from .utils import get_nc_id_from_header
 
-# Helper functions
 def _finalize(paths, keep_temp: bool, logger):
     if not keep_temp and os.path.isdir(paths.temp_dir):
         shutil.rmtree(paths.temp_dir, ignore_errors=True)
@@ -44,7 +43,8 @@ def _count_records(fasta_path: str) -> int:
                 n += 1
     return n
 
-def ensure_input_in_outdir(input_fasta, out_dir, logger=None):
+
+def ensure_input_in_outdir(input_fasta, out_dir):
     """
     Ensure input FASTA exists inside out_dir.
     If not, copy it there and return the new path.
@@ -58,17 +58,12 @@ def ensure_input_in_outdir(input_fasta, out_dir, logger=None):
 
     if input_fasta != dest_path:
         if not os.path.exists(dest_path):
-            msg = f"[LOG] Copying input FASTA to output directory: {dest_path}"
-            # print(msg)
-            # if logger:
-            #     logger.info(msg)
-
             shutil.copy2(input_fasta, dest_path)
         return dest_path
 
     return input_fasta
 
-def cleanup_unwanted_outputs(out_dir, logger=None):
+def cleanup_unwanted_outputs(out_dir):
     file_patterns = [
         "*_genomic_final_circos_v9.svg",
         "*_genomic_final_circos_v9.png",
@@ -88,25 +83,17 @@ def cleanup_unwanted_outputs(out_dir, logger=None):
         for fpath in glob.glob(os.path.join(out_dir, pattern)):
             if os.path.isfile(fpath):
                 os.remove(fpath)
-                msg = f"[LOG] Removed file: {fpath}"
-                # print(msg)
-                # if logger:
-                #     logger.info(msg)
 
     # Remove matching directories
     for pattern in dir_patterns:
         for dpath in glob.glob(os.path.join(out_dir, pattern)):
             if os.path.isdir(dpath):
                 shutil.rmtree(dpath)
-                msg = f"[LOG] Removed directory: {dpath}"
-                # print(msg)
-                # if logger:
-                #     logger.info(msg)
 
 
 def run_full(args, logger=None):
 
-    args.input = ensure_input_in_outdir(args.input, args.out_dir, logger)
+    args.input = ensure_input_in_outdir(args.input, args.out_dir)
 
     paths = resolve_paths(args.input, args.out_dir)
     write_section_header(paths.report, "Trim Analysis")
@@ -117,21 +104,15 @@ def run_full(args, logger=None):
 
     # Trim + Extend
     adjusted_records = []
-    extension_added_to_a_seq = {}
+    extension_added_to_a_seq = {} # What is the length of extension added to the replicon
     nc_id_gbff = []
-    nc_id_circular_or_linear = {}
-    nc_id_genome_length = {}
+    nc_id_circular_or_linear = {} # To know if every replicon is circular or linear
+    nc_id_genome_length = {}  # For every replicon length
     url = NCBI_URL
-    nc_id_plasmid_chromosome = {}
     for header, seq in stream_fasta(args.input):
+
         nc = get_nc_id_from_header(header)
         nc_id_gbff.append(nc)
-
-        # Checking if the seq is plasmid or chomosome and saving it in nc_id_plasmid_chromosome
-        if "plasmid" in header.lower():
-            nc_id_plasmid_chromosome[nc] = "plasmid"
-        else:
-            nc_id_plasmid_chromosome[nc] = "chromosome"
 
         trimmed_seq, trim_msg = detect_terminal_overlap(header, seq, paths, logger=logger)
         append_fasta_record(paths.original_fasta, header, trimmed_seq)
@@ -143,6 +124,9 @@ def run_full(args, logger=None):
         write_trim_record_block(paths.report, header, trim_msg)
         gp.update_trim(1)
 
+        # Downloading gbff file to check if the sequence is linear or cicular but this has many issues
+        # New Plan is to ask the user if the sequence is circular or linear
+        # So this code will be removed later
         params = {
             "db": "nuccore",
             "id": nc,
@@ -176,24 +160,23 @@ def run_full(args, logger=None):
     run_blast_annotation(paths.final_fasta, args.dnaA_db, paths.blast_dnaa_ext, evalue="1e-5", quiet=True)
     run_blast_annotation(paths.final_fasta, args.oric_db, paths.blast_oric_ext, evalue="1e-5", quiet=True)
 
-    dnaA_hits_ext,num_dnaa_hits = parse_blast_annotation(paths.blast_dnaa_ext)
+    dnaA_hits_ext,_ = parse_blast_annotation(paths.blast_dnaa_ext)
     oriC_hits_ext,num_oric_hits = parse_blast_annotation(paths.blast_oric_ext)
 
-    plasmids_needing_oriv = {
-        nc for nc, count in num_oric_hits.items()
-        if count == 0 and nc_id_plasmid_chromosome.get(nc) == "plasmid"
-    }
+    run_oriv = False
+    for value in num_oric_hits.values():
+        if value == 0:
+            run_oriv = True
+            break
 
     oriv_hits_ext = {}
-    if plasmids_needing_oriv:
+    if run_oriv:
         run_blast_annotation(paths.final_fasta, args.oriv_db, paths.blast_oriv_ext, evalue="1e-5", quiet=True)
-        oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext, num_oric_hits)
+        oriv_hits_ext = parse_oriv_blast_annotation(paths.blast_oriv_ext,num_oric_hits)
 
     # Extended + Original reports (from extended hits)
     for header, seq in stream_fasta(paths.final_fasta):
         rid = _record_id(header)
-        nc = get_nc_id_from_header(header)
-        is_plasmid = (nc_id_plasmid_chromosome.get(nc) == "plasmid")
 
         top_dnaa_ext = select_top_hits(dnaA_hits_ext.get(rid, []), k=3)
         top_oric_ext = select_top_hits(oriC_hits_ext.get(rid, []), k=7)
@@ -202,12 +185,8 @@ def run_full(args, logger=None):
         
         # Pairing using extended sequence
         pairs, chosen, seq_adjusted = pair_and_choose(rid, seq, top_dnaa_ext, top_oric_ext)
-        chosen = chosen or {}
 
-        info_after_adj = (
-            adjust_for_oriv_extension(seq, extension_added_to_a_seq, header, selected_oriv_hit)
-            if is_plasmid else {}
-        )
+        info_after_adj = adjust_for_oriv_extension(seq,extension_added_to_a_seq,header,selected_oriv_hit)
 
         found = None
         if len(pairs) != 0:
