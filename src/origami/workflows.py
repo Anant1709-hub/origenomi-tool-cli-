@@ -360,7 +360,7 @@ def run_full(args, logger=None):
     clean_report_headers(paths.original_report)
     gp.finish()
 
-    cleanup_unwanted_outputs(args.out_dir, logger)
+    cleanup_unwanted_outputs(args.out_dir)
 
     _finalize(paths, args.keep_temp, logger)
 
