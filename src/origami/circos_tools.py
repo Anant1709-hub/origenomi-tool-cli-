@@ -213,6 +213,7 @@ def generate_circos(
         plt.close(fig)
 
 
+
 def _prepare_plot_inputs(
     fna_path,
     accession,
@@ -223,38 +224,82 @@ def _prepare_plot_inputs(
     replicon_type="chromosome",
     topology="circular",
 ):
-    """Load one replicon and select the correct origin marker."""
+    """
+    Load one replicon and select plotting markers based on
+    the actual origin hits found in the report.
+    """
+
     topology = topology.lower()
+    replicon_type = replicon_type.lower()
+
+    if topology not in ("circular", "linear"):
+        print(f"Skipping {accession}: unsupported topology {topology!r}.")
+        return None
 
     record = _find_record(fna_path, accession)
     seq = str(record.seq)
     genome_len = len(seq)
 
-    if replicon_type == "plasmid":
-        origin = oriV_start
+    dnaA = dnaA_start
+    oriC = _normalise_origin(oriC_list)
+
+    # Select markers based on the hits found.
+    if dnaA is not None and oriC is not None:
+        # Normal chromosome: dnaA + oriC.
+        origin = oriC
+        origin_name = "oriC"
+        gc_window = 1000
+
+    elif oriV_start is not None:
+        # Replicon with oriV, regardless of its FASTA type.
+        origin = int(oriV_start)
         origin_name = "oriV"
         dnaA = None
         gc_window = 100
-        if origin is None:
-            print(f"Skipping {accession}: circular plasmid has no oriV hit.")
-            return None
-    else:
-        origin = _normalise_origin(oriC_list)
-        origin_name = "oriC"
-        dnaA = dnaA_start
-        gc_window = 1000
-        if dnaA is None or origin is None:
-            print(f"Skipping {accession}: chromosome requires both dnaA and oriC hits.")
-            return None
 
-    _validate_coordinate(origin_name, origin, genome_len, accession)
+    elif oriC is not None:
+        # oriC found, but dnaA is missing.
+        origin = oriC
+        origin_name = "oriC"
+        dnaA = None
+        gc_window = 1000
+
+    else:
+        print(
+            f"Skipping {accession}: "
+            "no usable oriC or oriV hit found."
+        )
+        return None
+
+    _validate_coordinate(
+        origin_name,
+        origin,
+        genome_len,
+        accession,
+    )
+
     if dnaA is not None:
-        _validate_coordinate("dnaA", dnaA, genome_len, accession)
+        _validate_coordinate(
+            "dnaA",
+            dnaA,
+            genome_len,
+            accession,
+        )
 
     skew = fast_gc_skew(seq, win=gc_window)
+
     os.makedirs(output_dir, exist_ok=True)
 
-    return record, genome_len, skew, replicon_type, dnaA, origin, origin_name
+    return (
+        record,
+        genome_len,
+        skew,
+        replicon_type,
+        dnaA,
+        origin,
+        origin_name,
+    )
+
 
 
 
@@ -316,6 +361,7 @@ def plot_circos(
 
 
 
+
 def plot_rotated_circos(
     fna_path,
     accession,
@@ -327,20 +373,24 @@ def plot_rotated_circos(
     replicon_type="chromosome",
     topology="circular",
 ):
+    """
+    Create rotated Circos plots only for circular replicons.
+
+    Rotation anchor:
+        - oriV, when oriV is the selected hit.
+        - dnaA/oriC, when both are available.
+        - oriC, when only oriC is available.
+    """
+
     topology = topology.lower()
 
-    if topology == "linear":
+    if topology != "circular":
         print(
             f"Skipping rotated plot for {accession}: "
-            "linear replicons are not rotated."
+            f"topology is {topology}."
         )
         return None
-    """
-    Create the rotated Circos plot.
 
-    The first six parameters match main.py. For plasmids, main.py should
-    pass shift_bp=oriV_start so oriV is placed at the rotation origin.
-    """
     prepared = _prepare_plot_inputs(
         fna_path,
         accession,
@@ -351,21 +401,42 @@ def plot_rotated_circos(
         replicon_type=replicon_type,
         topology=topology,
     )
+
     if prepared is None:
         return None
 
-    record, genome_len, skew, rep_type, dnaA, origin, origin_name = prepared
+    (
+        record,
+        genome_len,
+        skew,
+        rep_type,
+        dnaA,
+        origin,
+        origin_name,
+    ) = prepared
 
-    if rep_type == "plasmid":
+    # Use oriV as the rotation anchor whenever it was selected.
+    if origin_name == "oriV":
+        shift_bp = origin
+
+    # Otherwise use the chromosome dnaA/oriC pair.
+    elif dnaA is not None and origin_name == "oriC":
         if shift_bp is None:
-            shift_bp = origin
-    elif shift_bp is None:
-        # Keep the main.py-supplied shift when present; otherwise derive it.
-        oriC = origin
-        a, b = sorted([dnaA, oriC])
-        shift_bp = b if (b - a) > genome_len / 2 else a
+            a, b = sorted([dnaA, origin])
+            shift_bp = (
+                b if (b - a) > genome_len / 2 else a
+            )
 
-    _validate_coordinate("rotation", shift_bp, genome_len, record.id)
+    # If only oriC exists, rotate to oriC.
+    elif shift_bp is None:
+        shift_bp = origin
+
+    _validate_coordinate(
+        "rotation",
+        shift_bp,
+        genome_len,
+        record.id,
+    )
 
     return generate_circos(
         record,
@@ -379,6 +450,7 @@ def plot_rotated_circos(
         rotated=True,
         shift_bp=shift_bp,
     )
+
 
 
 def plot_all_replicons(fna_path, report_path, output_dir=None):
